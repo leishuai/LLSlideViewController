@@ -240,6 +240,7 @@
         [self installNewViewControllerForUserScrollingAtIndex:2];
         previousViewController = self.cachedViewControllers[0];
     }
+    self.currentViewController = self.cachedViewControllers[1];
     //callback
     if ([self.delegate respondsToSelector:@selector(slideViewController:didFinishAnimating:previousViewController:transitionCompleted:)]) {
         [self.delegate slideViewController:self
@@ -352,24 +353,26 @@
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
 
     //when user scroll beyond subviews bounds
-    if (scrollView.contentOffset.x > self.scrollView.bounds.size.width * 2 && self.manualScrolling) {
+    if (scrollView.contentOffset.x >= self.scrollView.bounds.size.width * 2 &&self.isManualScrolling) {
         [self updateViewAfterAddingViewToIndex:2];
         self.scrollView.contentInset = UIEdgeInsetsZero;
         [self installNewViewControllerForUserScrollingAtIndex:2];
+        self.currentViewController = self.cachedViewControllers[1];
         if ([self.delegate respondsToSelector:@selector(slideViewController:didFinishAnimating:previousViewController:transitionCompleted:)]) {
             [self.delegate slideViewController:self
                             didFinishAnimating:YES
-                        previousViewController:self.cachedViewControllers[1]
+                        previousViewController:self.cachedViewControllers[0]
                            transitionCompleted:YES];
         }
-    } else if (scrollView.contentOffset.x < 0 && self.manualScrolling) {
+    } else if (scrollView.contentOffset.x <= 0 && self.isManualScrolling) {
         [self updateViewAfterAddingViewToIndex:0];
         self.scrollView.contentInset = UIEdgeInsetsZero;
         [self installNewViewControllerForUserScrollingAtIndex:0];
+        self.currentViewController = self.cachedViewControllers[1];
         if ([self.delegate respondsToSelector:@selector(slideViewController:didFinishAnimating:previousViewController:transitionCompleted:)]) {
             [self.delegate slideViewController:self
                             didFinishAnimating:YES
-                        previousViewController:self.cachedViewControllers[1]
+                        previousViewController:self.cachedViewControllers[2]
                            transitionCompleted:YES];
         }
     }
@@ -400,6 +403,26 @@
         //set cached view controllers valid
         self.isCachedViewControllersValid = YES;
     }
+    
+    UIViewController *viewControllerToTransitTo;
+    if (scrollView.contentOffset.x > scrollView.bounds.size.width) { //will transion to view controller after current
+        viewControllerToTransitTo = self.cachedViewControllers[2];
+        
+    } else if (scrollView.contentOffset.x < scrollView.bounds.size.width) {  //will transion to view controller before
+        viewControllerToTransitTo = self.cachedViewControllers[0];
+    }
+    if ([viewControllerToTransitTo isKindOfClass:[UIViewController class]]) {
+        [viewControllerToTransitTo willMoveToParentViewController:self];
+        if ([self.delegate respondsToSelector:@selector(slideViewController:willTransitionToViewController:)]) {
+            [self.delegate slideViewController:self willTransitionToViewController:viewControllerToTransitTo];
+        }
+    } else {
+        /*
+         //raise exception
+         [NSException raise:@"view controller to be transitioned to is NSNull"
+         format:@"%@",vcToBeTransitedTo];
+         */
+    }
 }
 
 //user gesture driven
@@ -408,25 +431,6 @@
     self.scrollViewTargetOffset = *targetContentOffset;
     
     if ((*targetContentOffset).x != scrollView.bounds.size.width) {  //scrolled to right or left
-        UIViewController *vcToBeTransitedTo;
-        if ((*targetContentOffset).x == 0) { //scrolled to right
-            vcToBeTransitedTo = self.cachedViewControllers[0];
-        } else { //scrolled to left
-            vcToBeTransitedTo = self.cachedViewControllers[2];
-        }
-        if ([vcToBeTransitedTo isKindOfClass:[UIViewController class]]) {
-            self.currentViewController = vcToBeTransitedTo;
-            [vcToBeTransitedTo willMoveToParentViewController:self];
-            if ([self.delegate respondsToSelector:@selector(slideViewController:willTransitionToViewController:)]) {
-                [self.delegate slideViewController:self willTransitionToViewController:vcToBeTransitedTo];
-            }
-        } else {
-            /*
-            //raise exception
-            [NSException raise:@"view controller to be transitioned to is NSNull"
-                        format:@"%@",vcToBeTransitedTo];
-             */
-        }
         
         UIViewController *midVc = self.cachedViewControllers[1];
         if ([midVc isKindOfClass:[UIViewController class]]) {
@@ -439,7 +443,17 @@
 //user gesture driven
 - (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView {
     
-    [self tidyViewsAfterUserDraggingScrollView:scrollView];
+    if (self.scrollViewTargetOffset.x == scrollView.bounds.size.width) {
+        //user has cancelled scrolling
+        if ([self.delegate respondsToSelector:@selector(slideViewController:didFinishAnimating:previousViewController:transitionCompleted:)]) {
+            [self.delegate slideViewController:self
+                            didFinishAnimating:YES
+                        previousViewController:self.cachedViewControllers[1]
+                           transitionCompleted:NO];
+        }
+    }
+    
+    
     self.manualScrolling = NO;
     self.animating = NO;
 }
